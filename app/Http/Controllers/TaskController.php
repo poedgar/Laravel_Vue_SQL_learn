@@ -12,9 +12,27 @@ class TaskController extends Controller
 {
     public function index(Request $request): Response
     {
-        // SQLite pulls ONLY tasks belonging to this logged-in account
+        // 1. Start an Eloquent query builder scoped to the logged-in user
+        $query = $request->user()->tasks();
+
+        // 2. Conditionally apply a search filter if present
+        if ($request->filled('search')) {
+            $query->where('title', 'like', '%' . $request->input('search') . '%');
+        }
+
+        // 3. Conditionally apply a status filter (all, completed, pending)
+        if ($request->filled('status')) {
+            if ($request->input('status') === 'completed') {
+                $query->where('is_completed', true);
+            } elseif ($request->input('status') === 'pending') {
+                $query->where('is_completed', false);
+            }
+        }
+
+        // 4. Return the filtered dataset along with current filter values back to Vue
         return Inertia::render('Tasks/Index', [
-            'tasks' => $request->user()->tasks()->latest()->get()
+            'tasks' => $query->latest()->get(),
+            'filters' => $request->only(['search', 'status']), // Keeps input values synchronized in the UI
         ]);
     }
 
@@ -27,7 +45,7 @@ class TaskController extends Controller
         // Create the task directly attached to the logged-in user context
         $request->user()->tasks()->create($validated);
 
-        return redirect()->back(); 
+        return redirect()->back();
     }
 
     public function update(Request $request, Task $task)
@@ -36,7 +54,7 @@ class TaskController extends Controller
         Gate::authorize('modify', $task);
 
         $task->update([
-            'is_completed' => !$task->is_completed
+            'is_completed' => !$task->is_completed,
         ]);
 
         return redirect()->back();
