@@ -30,8 +30,9 @@ class TaskController extends Controller
         }
 
         // 4. Return the filtered dataset along with current filter values back to Vue
+        // withQueryString() ensures our existing search & status filters stay attached when we change pages
         return Inertia::render('Tasks/Index', [
-            'tasks' => $query->latest()->get(),
+            'tasks' => $query->latest()->paginate(1)->withQueryString(),
             'filters' => $request->only(['search', 'status']), // Keeps input values synchronized in the UI
         ]);
     }

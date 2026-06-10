@@ -1,11 +1,10 @@
 <script setup>
   import { ref, watch } from 'vue';
-  import { useForm, router } from '@inertiajs/vue3';
-  import debounce from 'lodash/debounce'; // Standard utility bundled by default
+  import { useForm, router, Link } from '@inertiajs/vue3'; // Import 'Link' from Inertia
+  import debounce from 'lodash/debounce';
 
-  // Accept the new 'filters' prop from our Laravel Controller
   const props = defineProps({
-    tasks: Array,
+    tasks: Object, // Change this from Array to Object
     filters: Object,
   });
 
@@ -13,7 +12,6 @@
     title: '',
   });
 
-  // Initialize reactive local states with values already in the URL (or fallback to empty)
   const search = ref(props.filters.search ?? '');
   const status = ref(props.filters.status ?? 'all');
 
@@ -33,30 +31,18 @@
     }
   };
 
-  // This function pushes our updated state parameters to the browser address bar
   const filterData = () => {
     router.get(
       route('tasks.index'),
       { search: search.value, status: status.value },
-      {
-        preserveState: true, // Prevents losing input focus while typing
-        preserveScroll: true,
-        replace: true, // Replaces browser history state so back-button isn't flooded
-      }
+      { preserveState: true, preserveScroll: true, replace: true }
     );
   };
 
-  // Watch the dropdown status select for immediate execution on change
-  watch(status, () => {
-    filterData();
-  });
-
-  // Watch the text field input, but run it through a 300ms debounce buffer delay
+  watch(status, () => filterData());
   watch(
     search,
-    debounce(() => {
-      filterData();
-    }, 300)
+    debounce(() => filterData(), 300)
   );
 </script>
 
@@ -105,12 +91,12 @@
 
     <div class="border-t border-slate-800 pt-4">
       <h3 class="text-sm font-semibold tracking-wider text-slate-400 uppercase mb-3">
-        Stored DB Records ({{ tasks.length }})
+        Stored DB Records (Page {{ tasks.current_page }} of {{ tasks.last_page }})
       </h3>
 
-      <ul v-if="tasks.length > 0" class="space-y-2">
+      <ul v-if="tasks.data.length > 0" class="space-y-2">
         <li
-          v-for="task in tasks"
+          v-for="task in tasks.data"
           :key="task.id"
           class="bg-slate-800 p-3 rounded border border-slate-700/50 flex justify-between items-center transition"
           :class="{ 'opacity-50 line-through bg-slate-850': task.is_completed }"
@@ -154,8 +140,26 @@
       </ul>
 
       <p v-else class="text-slate-500 text-sm italic">
-        No matching results found for current filters.
+        No records found matching current criteria.
       </p>
+
+      <div v-if="tasks.links.length > 3" class="mt-6 flex flex-wrap justify-center gap-1">
+        <Component
+          :is="link.url ? Link : 'span'"
+          v-for="(link, index) in tasks.links"
+          :key="index"
+          :href="link.url"
+          v-html="link.label"
+          class="px-3 py-1.5 text-xs rounded border transition"
+          :class="{
+            'bg-slate-800 text-slate-400 border-slate-700 cursor-not-allowed': !link.url,
+            'bg-indigo-600 text-white border-indigo-600 font-bold': link.active,
+            'bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800':
+              link.url && !link.active,
+          }"
+          preserve-scroll
+        />
+      </div>
     </div>
   </div>
 </template>
