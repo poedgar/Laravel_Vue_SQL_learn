@@ -1,5 +1,5 @@
 <script setup>
-  import { ref, watch } from 'vue';
+  import { ref, watch, computed } from 'vue';
   import { useForm, router, Link } from '@inertiajs/vue3';
   import debounce from 'lodash/debounce';
 
@@ -8,7 +8,6 @@
     filters: Object,
   });
 
-  // useForm exposes processing, errors, isDirty, and resetting out of the box
   const form = useForm({
     title: '',
   });
@@ -16,12 +15,12 @@
   const search = ref(props.filters.search ?? '');
   const status = ref(props.filters.status ?? 'all');
 
+  // Core array state holding selected rows
+  const selectedIds = ref([]);
+
   const submit = () => {
     form.post(route('tasks.store'), {
       onSuccess: () => form.reset('title'),
-      onError: () => {
-        console.log('Validation execution halted due to faulty data inputs.');
-      },
     });
   };
 
@@ -43,15 +42,66 @@
     );
   };
 
-  watch(status, () => filterData());
+  watch(status, () => {
+    selectedIds.value = []; // Reset selections on filter shift
+    filterData();
+  });
+
   watch(
     search,
-    debounce(() => filterData(), 300)
+    debounce(() => {
+      selectedIds.value = [];
+      filterData();
+    }, 300)
   );
+
+  // --- BULK LOGIC ENGINE ---
+
+  // Computes whether all tasks on the current page are checked
+  const isAllSelected = computed(() => {
+    if (props.tasks.data.length === 0) return false;
+    return props.tasks.data.every((task) => selectedIds.value.includes(task.id));
+  });
+
+  // Toggles selection of every row on the current paginated page view
+  const toggleSelectAll = () => {
+    if (isAllSelected.value) {
+      selectedIds.value = selectedIds.value.filter(
+        (id) => !props.tasks.data.some((task) => task.id === id)
+      );
+    } else {
+      const pageIds = props.tasks.data.map((task) => task.id);
+      selectedIds.value = [...new Set([...selectedIds.value, ...pageIds])];
+    }
+  };
+
+  // Dispatch selected action over the Inertia interface
+  const triggerBulkAction = (action) => {
+    if (
+      action === 'delete' &&
+      !confirm(`Are you sure you want to mass delete ${selectedIds.value.length} items?`)
+    ) {
+      return;
+    }
+
+    router.post(
+      route('tasks.bulk'),
+      {
+        ids: selectedIds.value,
+        action: action,
+      },
+      {
+        preserveScroll: true,
+        onSuccess: () => {
+          selectedIds.value = []; // Clear choices on complete
+        },
+      }
+    );
+  };
 </script>
 
 <template>
-  <div class="max-w-xl mx-auto mt-12 p-6 bg-slate-900 text-white rounded-xl shadow-xl">
+  <div class="max-w-xl mx-auto mt-12 p-6 bg-slate-900 text-white rounded-xl shadow-xl relative">
     <h2 class="text-xl font-bold mb-6">SQLite Project Hub</h2>
 
     <div class="flex gap-3 mb-6 bg-slate-800/50 p-3 rounded-lg border border-slate-800">
@@ -75,73 +125,79 @@
       </div>
     </div>
 
-    <form @submit.prevent="submit" class="mb-6">
-      <div class="flex gap-2">
-        <input
-          v-model="form.title"
-          type="text"
-          placeholder="Enter new element name..."
-          class="flex-1 bg-slate-800 border rounded p-2 text-white focus:outline-none transition-all duration-200"
-          :class="{
-            'border-slate-700 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500':
-              !form.errors.title,
-            'border-red-500 bg-red-950/20 text-red-200 focus:border-red-500 focus:ring-1 focus:ring-red-500':
-              form.errors.title,
-          }"
-          @input="form.clearErrors('title')"
-        />
-        <button
-          type="submit"
-          :disabled="form.processing || !form.isDirty"
-          class="bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded text-sm font-semibold transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          <span v-if="form.processing">Saving...</span>
-          <span v-else>Submit</span>
-        </button>
-      </div>
-
-      <div class="h-5 mt-1 overflow-hidden transition-all duration-300">
-        <Transition
-          enter-active-class="transition duration-200 ease-out"
-          enter-from-class="transform -translate-y-2 opacity-0"
-          enter-to-class="transform translate-y-0 opacity-100"
-          leave-active-class="transition duration-150 ease-in"
-          leave-from-class="transform translate-y-0 opacity-100"
-          leave-to-class="transform -translate-y-2 opacity-0"
-        >
-          <p
-            v-if="form.errors.title"
-            class="text-red-400 text-xs font-medium flex items-center gap-1"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              class="h-3.5 w-3.5"
-              viewBox="0 0 20 20"
-              fill="currentColor"
-            >
-              <path
-                fill-rule="evenodd"
-                d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z"
-                clip-rule="evenodd"
-              />
-            </svg>
-            {{ form.errors.title }}
-          </p>
-        </Transition>
-      </div>
+    <form @submit.prevent="submit" class="mb-6 flex gap-2">
+      <input
+        v-model="form.title"
+        type="text"
+        placeholder="Enter new element name..."
+        class="flex-1 bg-slate-800 border border-slate-700 rounded p-2 text-white focus:outline-none focus:border-indigo-500"
+      />
+      <button
+        type="submit"
+        :disabled="form.processing"
+        class="bg-indigo-600 hover:bg-indigo-500 px-4 py-2 rounded text-sm font-semibold transition disabled:opacity-50"
+      >
+        Submit
+      </button>
     </form>
+    <p v-if="form.errors.title" class="text-red-400 text-xs mb-4">{{ form.errors.title }}</p>
 
-    <div
-      v-if="form.wasSuccessful"
-      class="mb-4 bg-emerald-950/30 border border-emerald-500/40 text-emerald-400 p-2.5 rounded text-xs flex items-center gap-2"
+    <Transition
+      enter-active-class="transition duration-300 ease-out"
+      enter-from-class="transform translate-y-4 opacity-0 scale-95"
+      enter-to-class="transform translate-y-0 opacity-100 scale-100"
+      leave-active-class="transition duration-200 ease-in"
+      leave-from-class="transform translate-y-0 opacity-100 scale-100"
+      leave-to-class="transform translate-y-4 opacity-0 scale-95"
     >
-      ✓ Entry verified and committed to SQLite storage.
-    </div>
+      <div
+        v-if="selectedIds.length > 0"
+        class="mb-4 bg-indigo-950 border border-indigo-500/30 p-3 rounded-lg flex items-center justify-between shadow-inner"
+      >
+        <span class="text-xs font-semibold text-indigo-200"
+          >Selected records: {{ selectedIds.length }}</span
+        >
+        <div class="flex gap-2">
+          <button
+            @click="triggerBulkAction('complete')"
+            class="bg-indigo-700 hover:bg-indigo-600 px-2.5 py-1 text-xs rounded transition"
+          >
+            Mark Completed
+          </button>
+          <button
+            @click="triggerBulkAction('incomplete')"
+            class="bg-slate-800 hover:bg-slate-700 px-2.5 py-1 text-xs rounded transition border border-slate-700"
+          >
+            Mark Pending
+          </button>
+          <button
+            @click="triggerBulkAction('delete')"
+            class="bg-red-950 hover:bg-red-900 border border-red-700/40 text-red-300 px-2.5 py-1 text-xs rounded transition"
+          >
+            Delete All
+          </button>
+        </div>
+      </div>
+    </Transition>
 
     <div class="border-t border-slate-800 pt-4">
-      <h3 class="text-sm font-semibold tracking-wider text-slate-400 uppercase mb-3">
-        Stored DB Records (Page {{ tasks.current_page }} of {{ tasks.last_page }})
-      </h3>
+      <div class="flex justify-between items-center mb-3">
+        <h3 class="text-sm font-semibold tracking-wider text-slate-400 uppercase">
+          Stored DB Records (Page {{ tasks.current_page }} of {{ tasks.last_page }})
+        </h3>
+        <label
+          v-if="tasks.data.length > 0"
+          class="flex items-center gap-2 text-xs text-slate-400 cursor-pointer hover:text-slate-200 select-none"
+        >
+          <input
+            type="checkbox"
+            :checked="isAllSelected"
+            @change="toggleSelectAll"
+            class="rounded text-indigo-600 bg-slate-900 border-slate-700 focus:ring-indigo-500 h-3.5 w-3.5"
+          />
+          Select Page
+        </label>
+      </div>
 
       <ul v-if="tasks.data.length > 0" class="space-y-2">
         <li
@@ -151,6 +207,12 @@
           :class="{ 'opacity-50 line-through bg-slate-850': task.is_completed }"
         >
           <div class="flex items-center gap-3">
+            <input
+              type="checkbox"
+              :value="task.id"
+              v-model="selectedIds"
+              class="rounded text-indigo-600 bg-slate-900 border-slate-700 focus:ring-indigo-500 h-4 w-4"
+            />
             <input
               type="checkbox"
               :checked="task.is_completed"

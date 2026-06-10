@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Task;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
@@ -85,6 +86,40 @@ class TaskController extends Controller
         Gate::authorize('modify', $task);
 
         $task->delete();
+
+        return redirect()->back();
+    }
+
+    /**
+         * Handle bulk operations on multiple database rows.
+         */
+    public function bulk(Request $request)
+    {
+        $validated = $request->validate([
+            'ids' => 'required|array',
+            'ids.*' => 'exists:tasks,id', // Validates every single array element exists in tasks table
+            'action' => 'required|string|in:complete,incomplete,delete',
+        ]);
+
+        $ids = $validated['ids'];
+        $action = $validated['action'];
+
+        // Security check: Ensure the authenticated user owns ALL the requested IDs
+        $unauthorizedTasks = Task::whereIn('id', $ids)->where('user_id', '!=', $request->user()->id)->count();
+        if ($unauthorizedTasks > 0) {
+            abort(403, 'Unauthorized action detected on protected records.');
+        }
+
+        // Execute queries inside an isolated database transaction block
+        DB::transaction(function () use ($ids, $action) {
+            if ($action === 'complete') {
+                Task::whereIn('id', $ids)->update(['is_completed' => true]);
+            } elseif ($action === 'incomplete') {
+                Task::whereIn('id', $ids)->update(['is_completed' => false]);
+            } elseif ($action === 'delete') {
+                Task::whereIn('id', $ids)->delete();
+            }
+        });
 
         return redirect()->back();
     }

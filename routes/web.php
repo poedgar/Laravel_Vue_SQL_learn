@@ -31,6 +31,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/tasks', [TaskController::class, 'store'])->name('tasks.store');
     Route::put('/tasks/{task}', [TaskController::class, 'update'])->name('tasks.update');
     Route::delete('/tasks/{task}', [TaskController::class, 'destroy'])->name('tasks.destroy');
+    Route::post('/tasks/bulk', [TaskController::class, 'bulk'])->name('tasks.bulk');
 });
 
 require __DIR__.'/auth.php';
