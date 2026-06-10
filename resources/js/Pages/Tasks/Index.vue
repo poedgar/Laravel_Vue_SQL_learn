@@ -1,12 +1,32 @@
 <script setup>
-  import { ref, watch, computed } from 'vue';
+  import { ref, watch, computed, onMounted } from 'vue';
   import { useForm, router, Link } from '@inertiajs/vue3';
   import debounce from 'lodash/debounce';
 
   const props = defineProps({
     tasks: Object,
     filters: Object,
+    auth: Object, // Capture the authenticated user profile shared globally
   });
+
+  // Real-time notification container states
+  const notifications = ref([]);
+
+  onMounted(() => {
+    // Connect to the private user WebSocket channel using Laravel Echo
+    window.Echo.private(`user.${props.auth.user.id}`).listen('ReportGenerated', (e) => {
+      notifications.value.push(e);
+
+      // Auto-clear notification after 6 seconds
+      setTimeout(() => {
+        notifications.value.shift();
+      }, 6000);
+    });
+  });
+
+  const triggerExport = () => {
+    router.post(route('tasks.export'), {}, { preserveScroll: true });
+  };
 
   const form = useForm({
     title: '',
@@ -271,6 +291,29 @@
           preserve-scroll
         />
       </div>
+    </div>
+
+    <div class="absolute top-4 right-4 z-50 space-y-2 pointer-events-none w-72">
+      <div
+        v-for="(note, idx) in notifications"
+        :key="idx"
+        class="bg-indigo-600 text-white p-3 rounded-lg shadow-2xl border border-indigo-400/30 text-xs flex flex-col gap-1 transition-all duration-300"
+      >
+        <div class="font-bold flex justify-between">
+          <span>⚡ System Notification</span>
+          <span class="opacity-60">{{ note.timestamp }}</span>
+        </div>
+        <p>{{ note.message }}</p>
+      </div>
+    </div>
+
+    <div class="flex justify-between items-center mt-6 mb-6">
+      <button
+        @click="triggerExport"
+        class="bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 px-3 py-1.5 rounded-lg text-xs font-semibold transition"
+      >
+        📥 Export History
+      </button>
     </div>
   </div>
 </template>

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\ProcessTaskReport;
 use App\Models\Task;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -121,6 +122,15 @@ class TaskController extends Controller
             }
         });
 
+        return redirect()->back();
+    }
+
+    public function export(Request $request)
+    {
+        // Hands the task straight over to the SQLite background queue table
+        ProcessTaskReport::dispatch($request->user());
+
+        // Returns immediate execution control back to the UI interface
         return redirect()->back();
     }
 }
