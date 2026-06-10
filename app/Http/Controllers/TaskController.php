@@ -18,6 +18,10 @@ class TaskController extends Controller
         // 1. Start an Eloquent query builder scoped to the logged-in user
         $query = $request->user()->tasks();
 
+        // 1. ELIMINATE N+1: Eager load the 'user' relationship using with()
+        // 2. AGGREGATE OPTIMIZATION: Append 'comments_count' directly via raw SQLite counting queries
+        $query->with(['user', 'comments.user'])->withCount('comments');
+
         // 2. Conditionally apply a search filter if present
         if ($request->filled('search')) {
             $query->where('title', 'like', '%' . $request->input('search') . '%');

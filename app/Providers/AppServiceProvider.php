@@ -2,11 +2,12 @@
 
 namespace App\Providers;
 
+use App\Models\Task;
+use App\Models\User;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Vite;
 use Illuminate\Support\ServiceProvider;
-use App\Models\User;
-use App\Models\Task;
-use Illuminate\Support\Facades\Gate;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -29,5 +30,8 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('modify', function (User $user, Task $task) {
             return $user->id === $task->user_id;
         });
+
+        // Throws an immediate error in your local terminal if you accidentally write an N+1 loop
+        Model::preventLazyLoading(! app()->isProduction());
     }
 }
