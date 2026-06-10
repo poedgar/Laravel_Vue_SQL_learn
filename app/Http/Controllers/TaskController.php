@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Task;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -39,11 +40,29 @@ class TaskController extends Controller
 
     public function store(Request $request)
     {
+        // Advanced multi-rule validation
         $validated = $request->validate([
-            'title' => 'required|string|max:255',
+            'title' => [
+                'required',
+                'string',
+                'min:3',
+                'max:50',
+                // Rule ensures uniqueness ONLY within the user's own list records
+                Rule::unique('tasks', 'title')->where(fn ($query) => $query->where('user_id', $request->user()->id)),
+                // Inline custom closure validation rule to intercept low-effort inputs
+                function ($attribute, $value, $fail) {
+                    if (strtolower($value) === 'something' || strtolower($value) === 'test') {
+                        $fail('Please provide a specific, actionable item name.');
+                    }
+                },
+            ],
+        ], [
+            // Customizing error messages natively in the backend
+            'title.required' => 'The title field cannot be left completely blank.',
+            'title.min' => 'A descriptive title must be at least 3 characters long.',
+            'title.unique' => 'You have already added a record with this exact name.',
         ]);
 
-        // Create the task directly attached to the logged-in user context
         $request->user()->tasks()->create($validated);
 
         return redirect()->back();
